@@ -3,3 +3,4 @@
 golay
 optar
 *.pgm
+golay_codes.c
