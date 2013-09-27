@@ -159,7 +159,7 @@ void label(void)
 	unsigned char *ptr;
 	unsigned txtlen;
 
-	snprintf(txt, sizeof(char) * (DATA_WIDTH/TEXT_WIDTH), "  %s %udpi %u/%u %s",
+	snprintf(txt, sizeof(char) * (DATA_WIDTH/TEXT_WIDTH), " %s %udpi %u/%u %s",
 		paper_format_a4?"A4":"US-LETTER",
 		paper_dpis,
 		file_number, n_pages,
