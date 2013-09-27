@@ -3,6 +3,7 @@
 #include <stdio.h> /* fprintf */
 
 #include "optar.h"
+#include "opts.h"
 
 /* Coordinates don't count with the border - 0,0 is upper left corner of the
  * first cross! */

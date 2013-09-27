@@ -4,6 +4,7 @@
 #include <stdlib.h> /* exit */
 #include <string.h> /* memcpy */
 #include <assert.h> /* assert */
+#include <unistd.h> /* getopt */
 
 #define width font_width
 #define height font_height
@@ -13,12 +14,11 @@
 
 #include "optar.h"
 #include "parity.h"
-#define HEIGHT (2*BORDER+DATA_HEIGHT+TEXT_HEIGHT)
-#define TEXT_HEIGHT 24
 
-static unsigned char ary[WIDTH*HEIGHT];
-static unsigned char *file_label=(unsigned char *)""; /* The filename written in the
-					file_label */
+#include "opts.h"
+
+static unsigned char *ary = NULL; /* Allocated to width*height */
+static unsigned char *file_label=(unsigned char *)""; /* The filename written in the file_label */
 static char *output_filename; /* The output filename */
 static unsigned output_filename_buffer_size;
 static unsigned char *base=(unsigned char *)"optar_out"; /* Output filename base */
@@ -35,7 +35,7 @@ void dump_ary(void)
 		"255\n"
 		,WIDTH, HEIGHT);
 
-	fwrite(ary, sizeof(ary), 1, output_stream);
+	fwrite(ary, sizeof(unsigned char)*WIDTH*HEIGHT, 1, output_stream);
 }
 
 /* Only the LSB is significant. Writes hamming-encoded bits. The sequence number
@@ -94,7 +94,7 @@ unsigned long hamming(unsigned long in)
 void border(void)
 {
 	unsigned c;
-	char *ptr=(char *)(void *)ary;
+	unsigned char *ptr=ary;
 
 	memset(ptr,0,BORDER*WIDTH);
 	ptr+=BORDER*WIDTH;
@@ -153,11 +153,12 @@ void text_block (destx, srcx, width)
 void label(void)
 {
 	unsigned x=0;
-	static char txt[DATA_WIDTH/TEXT_WIDTH];
+	static char *txt = NULL;
+	txt = malloc(sizeof(char) * (DATA_WIDTH/TEXT_WIDTH));
 	unsigned char *ptr;
 	unsigned txtlen;
 
-	snprintf(txt, sizeof txt, "  0-%u-%u-%u-%u-%u-%u-%u %u/%u %s"
+	snprintf(txt, sizeof(char) * (DATA_WIDTH/TEXT_WIDTH), "  0-%u-%u-%u-%u-%u-%u-%u %u/%u %s"
 		, XCROSSES, YCROSSES, CPITCH, CHALF
 		, FEC_ORDER, BORDER, TEXT_HEIGHT
 		,file_number,n_pages
@@ -174,12 +175,12 @@ void label(void)
 			x+=TEXT_WIDTH;
 		}
 	}
-
+	free(txt);
 }
 
 void format_ary(void)
 {
-	memset(ary, 0xff, sizeof(ary)); /* White */
+	memset(ary, 0xff, sizeof(unsigned char) * WIDTH*HEIGHT); /* White */
 	border();
 	crosses();
 	label();
@@ -301,23 +302,61 @@ void open_input_file(char *fname)
  * 2nd arg(optional) - label and output filename base */
 int main(int argc, char **argv)
 {
+	char *input_filename = NULL;
 
-	if (argc<2){
-		fprintf(stderr,"Usage: optar <input file> [filename base]\n");
+	int c;
+
+	while ((c = getopt (argc, argv, "ud:i:l:h")) != -1)
+	{
+		switch(c)
+		{
+			case 'u':
+				paper_format_a4 = 0;
+				break;
+			case 'd':
+				paper_dpis = atoi(optarg);
+				break;
+			case 'i':
+				input_filename = optarg;
+				break;
+			case 'l':
+				file_label = (void *)optarg;
+				base = (unsigned char *)(void *)optarg;
+				break;
+			case 'h':
+			default:
+				fprintf(stderr,"Usage: optar [OPTIONS]\n\n");
+				fprintf(stderr,"Options:\n");
+				fprintf(stderr,"\t-i INPUT  Input file (required)\n");
+				fprintf(stderr,"\t-l LABEL  Print label and output prefix\n");
+				fprintf(stderr,"\t-d DPI    Specify printing resolution (default: 600dpi)\n");
+				fprintf(stderr,"\t-u        Use US-Letter format (default: A4)\n");
+				exit(1);
+		}
+	}
+
+	if(!input_filename) {
+		fprintf(stderr,"No input file specified!\n");
 		exit(1);
 	}
-	open_input_file(argv[1]);
 
-	if (argc>=3) file_label=base=(void *)argv[2];
-	output_filename_buffer_size=strlen((char *)(void *)base)+1+4+1+3+1;
-	output_filename=malloc(output_filename_buffer_size);
+	calc_opts();
+	ary = malloc(sizeof(unsigned char)*WIDTH*HEIGHT);
+
+	open_input_file(input_filename);
+
+	output_filename_buffer_size = strlen((char *)(void *)base)+1+4+1+3+1;
+	output_filename = malloc(output_filename_buffer_size);
+
 	if (!output_filename){
 		fprintf(stderr,"Cannot allocate output filename\n");
 		exit(1);
 	}
+
 	new_file();
 	feed_data();
 	fclose(input_stream);
 	free(output_filename);
+	free(ary);
 	return 0;
 }
