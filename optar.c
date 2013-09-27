@@ -36,6 +36,7 @@ void dump_ary(void)
 		,WIDTH, HEIGHT);
 
 	fwrite(ary, sizeof(unsigned char)*WIDTH*HEIGHT, 1, output_stream);
+	// FIXME: run pgm2ps on the file (after the two fcloses)
 }
 
 /* Only the LSB is significant. Writes hamming-encoded bits. The sequence number
@@ -158,11 +159,11 @@ void label(void)
 	unsigned char *ptr;
 	unsigned txtlen;
 
-	snprintf(txt, sizeof(char) * (DATA_WIDTH/TEXT_WIDTH), "  0-%u-%u-%u-%u-%u-%u-%u %u/%u %s"
-		, XCROSSES, YCROSSES, CPITCH, CHALF
-		, FEC_ORDER, BORDER, TEXT_HEIGHT
-		,file_number,n_pages
-		, (char *)(void *)file_label);
+	snprintf(txt, sizeof(char) * (DATA_WIDTH/TEXT_WIDTH), "  %s %udpi %u/%u %s",
+		paper_format_a4?"A4":"US-LETTER",
+		paper_dpis,
+		file_number, n_pages,
+		(char *)(void *)file_label);
 	txtlen=strlen((char *)(void *)txt);
 
 	assert(font_height==TEXT_HEIGHT);
