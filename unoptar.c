@@ -5,11 +5,17 @@
 #include <math.h> /* floor */
 #include <string.h> /* memcpy */
 #include <assert.h> /* assert */
-#include <png.h> /* libpng. Sometimes is in /usr/local/include/libpng/png.h, but that is taken
-		    care of using -I/usr/local/include/libpng in the Makefile. */
+#include <png.h> /* libpng. */
+/* Sometimes is in /usr/local/include/libpng/png.h,
+ * but that is taken care of using -I/usr/local/include/libpng
+ * in the Makefile.
+ */
+#include <unistd.h> /* getopt */
 
 #include "optar.h"
 #include "parity.h"
+
+#include "opts.h"
 
 /* Crosses will be resynced with precision of FINESTEP pixels */
 #define FINE_CROSS_RESYNC
@@ -35,28 +41,26 @@ struct que{
 	unsigned y;
 };
 
-static unsigned width, height; /* In pixels, not it symbols! The whole image including
-			   border, white surrounding etc. */
-static unsigned char *ary; /* Allocated to width*height */
-static unsigned char *newary; /* Allocated to width*height */
+static unsigned width, height; /* In pixels, not it symbols! The whole image including border, white surrounding etc. */
+static unsigned char *ary = NULL; /* Allocated to width*height*2 */
+static unsigned char *newary = NULL; /* Allocated to width*height */
 
 static unsigned long histogram[256];
 static unsigned char global_cutlevel;
-static unsigned char fill_global_cutlevel; /* This is always set to 50% between
-					      black and white to make sure the
-					      border is not accidentally broken
-					      through as happened when
-					      global_cutlevel was used for
-					      filling. */
+
+static unsigned char fill_global_cutlevel;
+/* This is always set to 50% between black and white to make sure the
+ * border is not accidentally broken through as happened when
+ * global_cutlevel was used for filling.
+ */
+
 static unsigned char average; /* Average pixel value */
-static unsigned long corners[4][2]; /* UL, UR, LL, LR / x, y. Integers in pixel upper
-			   left corners. */
-static unsigned long leftedge, rightedge, topedge, bottomedge; /* Coordinates,
-	minima/maxima of the corner coordinates. */
-static double crosses[XCROSSES][YCROSSES][2]; /* [x][y][coord]. Integers in pixel
-					  upper left corners. */
-static float cutlevels[XCROSSES][YCROSSES]; /* Each cross has it's own cutlevel
-	based on how it came out printed. */
+static unsigned long corners[4][2]; /* UL, UR, LL, LR / x, y. Integers in pixel upper left corners. */
+static unsigned long leftedge, rightedge, topedge, bottomedge; /* Coordinates, minima/maxima of the corner coordinates. */
+
+static double ***crosses = NULL; /* [x][y][coord]. Integers in pixel upper left corners. */
+static float **cutlevels = NULL; /* [x][y] Each cross has it's own cutlevel used on how it came out printed. */
+
 static int chalf_fine; /* Larger chalf for fine search */
 static int chalf; /* In the input image, measured in input image pixels!
 		   Important difference - in the decoding, the crosses are
@@ -98,7 +102,6 @@ static FILE *input_stream;
 static double output_gamma=0.454545; /* What gamma the debug output has
 			      (output number=number of photons ^ gamma) */
 static long format_height; /* Used to be the HEIGHT macro. */
-static unsigned text_height=24;
 static unsigned long golay_stats[5]; /* 0, 1, 2, 3, 4 damaged bits */
 
 /* -------------------- MAGIC CONSTANTS -------------------- */
@@ -1384,7 +1387,7 @@ static void process_minmax(void)
  * loaded from the commandline. */
 static void init_dimensions(void)
 {
-	format_height=2*BORDER+DATA_HEIGHT+text_height;
+	format_height=2*BORDER+DATA_HEIGHT+TEXT_HEIGHT;
 }
 
 static void que_write(unsigned x, unsigned y)
@@ -1656,41 +1659,81 @@ static void process_files(char *base)
 
 }
 
-static void parse_format(char *format)
-{
-	unsigned dummy;
-
-	sscanf(format,"%u-%u-%u-%u-%u-%u-%u-%u",
-			&dummy,
-			&dummy,
-			&dummy,
-			&dummy,
-			&dummy,
-			&dummy,
-			&dummy,
-			&text_height);
-	fprintf(stderr,"Format: text height=%u\n", text_height);
-}
-
-/* argv:
- * input filename base (mandatory). For example "base" will produce
- * 	base_0001.png and base_0001_debug.pgm. 
- * text height (optional, defaults to 24)
- */
 int main(int argc, char **argv)
 {
-	if (argc<3){
-		fprintf(stderr,"usage: unoptar <format>"
-			" <input filename base>\n");
+	char *input_prefix = NULL;
+
+	int c;
+
+	while ((c = getopt (argc, argv, "ud:p:h")) != -1)
+	{
+		switch(c)
+		{
+			case 'u':
+				paper_format_a4 = 0;
+				break;
+			case 'd':
+				paper_dpis = atoi(optarg);
+				break;
+			case 'p':
+				input_prefix = optarg;
+				break;
+			case 'h':
+			default:
+				fprintf(stderr,"Usage: unoptar [OPTIONS]\n\n");
+				fprintf(stderr,"Options:\n");
+				fprintf(stderr,"\t-p PREFIX  Input file prefix (including path, suffix '_NNNN.png' is expected)\n");
+				fprintf(stderr,"\t-d DPI     Specify printing resolution (default: 600dpi)\n");
+				fprintf(stderr,"\t-u         Use US-Letter format (default: A4)\n\n");
+				fprintf(stderr,"The unpacked data is sent to STDOUT.\n");
+				exit(1);
+		}
+	}
+
+	if(!input_prefix) {
+		fprintf(stderr,"No input prefix specified!\n");
 		exit(1);
 	}
 
-	parse_format(argv[1]);
+	calc_opts();
+
+	crosses = malloc(sizeof(double *) * XCROSSES);
+	for(int i=0;i<XCROSSES;i++)
+	{
+		crosses[i] = malloc(sizeof(double *) * YCROSSES);
+		for(int j=0;j<YCROSSES;j++)
+		{
+			crosses[i][j] = malloc(sizeof(double) * 2);
+		}
+	}
+
+	cutlevels = malloc(sizeof(float *) * XCROSSES);
+	for(int i=0;i<XCROSSES;i++)
+	{
+		cutlevels[i] = malloc(sizeof(float) * YCROSSES);
+	}
+
 	/* This must after all dimension-related parameters are decoded. */
 	init_dimensions();
 
 	print_chan_info();
-	process_files(argv[2]);
+	process_files(input_prefix);
+
+	for(int i=0;i<XCROSSES;i++)
+	{
+		for(int j=0;j<YCROSSES;j++)
+		{
+			free(crosses[i][j]);
+		}
+		free(crosses[i]);
+	}
+	free(crosses);
+
+	for(int i=0;i<XCROSSES;i++)
+	{
+		free(cutlevels[i]);
+	}
+	free(cutlevels);
 
 	return 0;
 }

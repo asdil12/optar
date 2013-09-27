@@ -4,8 +4,7 @@ int paper_format_a4 = 1;
 unsigned paper_dpis = 600;
 
 unsigned XCROSSES, YCROSSES, DATA_WIDTH, DATA_HEIGHT, WIDTH, HEIGHT, NARROWWIDTH, NARROWPIXELS, WIDEWIDTH, WIDEPIXELS, REPPIXELS;
-unsigned FEC_SYMS, NETBITS, USEDBITS;
-unsigned long TOTALBITS;
+unsigned long TOTALBITS, FEC_SYMS, NETBITS, USEDBITS;
 
 void calc_opts(void)
 {
